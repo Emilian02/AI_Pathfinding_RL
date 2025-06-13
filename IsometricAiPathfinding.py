@@ -123,10 +123,8 @@ class Player:
         while True:
             x = random.randint(0, GRID_WIDTH - 1)
             y = random.randint(0, GRID_HEIGHT - 1)
-            distance = abs(x - objective_position[0]) + abs(y - objective_position[1])
-            if distance >= min(GRID_WIDTH, GRID_HEIGHT) // 2:
-                if (x, y) not in holes:
-                    return x, y
+            if (x, y) not in holes:
+                return x, y
 
     def load_sprites(self):
         try:
@@ -179,7 +177,7 @@ class PathfindingEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=max(GRID_WIDTH, GRID_HEIGHT), shape=(2,), dtype=np.int32)
         self.step_limit = 50
         self.previous_state = np.array([self.player.x, self.player.y])
-        self.visitted = set()
+        self.visisted = set()
 
     def reset_scene(self):
         self.renderer.reset_scene()
@@ -289,6 +287,7 @@ def main():
     # Main game loop
     clock = pygame.time.Clock()
     running = True
+    env.reset()
     done = False
 
     while running:
@@ -305,6 +304,7 @@ def main():
                     env.reset()
                     env.reset_scene()
                     q_table = train_q_learning(env, 75)  # Retrain Q-table for new scene
+                    env.reset()
                     done = False
 
         if not done:
