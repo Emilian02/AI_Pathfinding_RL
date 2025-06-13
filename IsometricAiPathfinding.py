@@ -123,8 +123,10 @@ class Player:
         while True:
             x = random.randint(0, GRID_WIDTH - 1)
             y = random.randint(0, GRID_HEIGHT - 1)
-            if (x, y) not in holes and (x, y) != objective_position:
-                return x, y
+            distance = abs(x - objective_position[0]) + abs(y - objective_position[1])
+            if distance >= min(GRID_WIDTH, GRID_HEIGHT) // 2:
+                if (x, y) not in holes:
+                    return x, y
 
     def load_sprites(self):
         try:
@@ -175,17 +177,19 @@ class PathfindingEnv(gym.Env):
         self.player = Player(self.renderer.holes, self.renderer.objective_position)
         self.action_space = spaces.Discrete(4)  # up, down, left, right
         self.observation_space = spaces.Box(low=0, high=max(GRID_WIDTH, GRID_HEIGHT), shape=(2,), dtype=np.int32)
-        self.step_count = 0
-        self.step_limit = 100 
+        self.step_limit = 50
         self.previous_state = np.array([self.player.x, self.player.y])
-        self.visisted = set()
+        self.visitted = set()
+
+    def reset_scene(self):
+        self.renderer.reset_scene()
 
     def reset(self) -> np.ndarray:
-        self.renderer.reset_scene()
         self.player = Player(self.renderer.holes, self.renderer.objective_position)
         self.step_count = 0  # Reset step counter
         self.previous_state = np.array([self.player.x, self.player.y])
         self.visited = set()
+        self.visited.clear()
         self.visited.add((self.player.x, self.player.y))
         return np.array([self.player.x, self.player.y])
     
@@ -197,16 +201,14 @@ class PathfindingEnv(gym.Env):
         reward = -1  # Default step penalty
         done = False
 
-        # Note to self: Gotta keep modifying the reward system, the punishment is too high and tweak the epsilon decay
-
         if (self.player.x, self.player.y) in self.renderer.holes:
-            reward -= 100  # Penalty for falling into a hole
+            reward -= 10  # Penalty for falling into a hole
             done = True
         elif (self.player.x, self.player.y) == self.renderer.objective_position:
-            reward += 300  # Reward for reaching the objective
+            reward += 35  # Reward for reaching the objective
             done = True
         elif self.player.x < 0 or self.player.x >= GRID_WIDTH or self.player.y < 0 or self.player.y >= GRID_HEIGHT:
-            reward -= 75  # Penalty for leaving the grid
+            reward -= 15  # Penalty for leaving the grid
             done = True
         else:
             # Dynamic reward based on distance to the objective
@@ -214,15 +216,15 @@ class PathfindingEnv(gym.Env):
             previous_distance = abs(self.previous_state[0] - self.renderer.objective_position[0]) + abs(self.previous_state[1] - self.renderer.objective_position[1])
             
             if current_distance < previous_distance:
-                reward += 20  # Reward for moving closer to the objective
+                reward += 5  # Reward for moving closer to the objective
             else:
-                reward -= 10  # Penalty for moving away from the objective
+                reward -= 2  # Penalty for moving away from the objective
 
         if (self.player.x, self.player.y) in self.visited:
-            reward -= 10  # Penalty for revisiting a tile
+            reward -= 2  # Penalty for revisiting a tile
 
         if self.step_count > self.step_limit:
-            reward -= 20  # Penalty for exceeding step limit
+            reward -= 3  # Penalty for exceeding step limit
             done = True
 
         self.step_count += 1  # step counter
@@ -238,10 +240,14 @@ class PathfindingEnv(gym.Env):
         self.renderer.draw_grid_lines()
         pygame.display.flip()
 
-def train_q_learning(env: PathfindingEnv, episodes: int = 1500, alpha: float = 0.1, gamma: float = 0.9, epsilon: float = 1.0, epsilon_min: float = 0.05, epsilon_decay: float = 0.9) -> np.ndarray:
+def train_q_learning(env: PathfindingEnv, episodes: int = 1000, alpha: float = 0.1, gamma: float = 0.9, epsilon: float = 1.0, epsilon_min: float = 0.05, epsilon_decay: float = 0.9) -> np.ndarray:
     q_table = np.zeros((GRID_WIDTH, GRID_HEIGHT, env.action_space.n))
 
     for episode in range(episodes):
+        if episode % 75 == 0:
+            env.reset_scene()  # Reset the scene every 100 episodes so that the agent adapts to new challenges
+            epsilon = 1.0 # Reset epsilon to encourage exploration at the start of each new scene
+            print(f"Resetting scene for episode {episode + 1}")
         state = env.reset()
         done = False
         step_count = 0
@@ -266,7 +272,6 @@ def train_q_learning(env: PathfindingEnv, episodes: int = 1500, alpha: float = 0
             total_reward += reward
 
             # Logging for debugging
-            #print(f"Episode: {episode}, Step: {step_count}, State: {state}, Action: {action}, Reward: {reward}, Done: {done}")
             if done:
                 print(f"Episode {episode + 1}/{episodes} finished after {step_count} steps with total reward {total_reward}")
                 
@@ -278,6 +283,7 @@ def train_q_learning(env: PathfindingEnv, episodes: int = 1500, alpha: float = 0
 
 def main():
     env = PathfindingEnv()
+
     q_table = train_q_learning(env)
 
     # Main game loop
@@ -297,6 +303,8 @@ def main():
                     sys.exit()
                 if event.key == pygame.K_r:
                     env.reset()
+                    env.reset_scene()
+                    q_table = train_q_learning(env, 75)  # Retrain Q-table for new scene
                     done = False
 
         if not done:
@@ -315,7 +323,7 @@ def main():
 
         # Update the display
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(2)
 
 if __name__ == "__main__":
     main()
