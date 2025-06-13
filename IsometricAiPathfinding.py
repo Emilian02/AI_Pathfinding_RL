@@ -282,7 +282,7 @@ def train_q_learning(env: PathfindingEnv, episodes: int = 1000, alpha: float = 0
 def main():
     env = PathfindingEnv()
 
-    q_table = train_q_learning(env)
+    q_table = train_q_learning(env, 75)
 
     # Main game loop
     clock = pygame.time.Clock()
